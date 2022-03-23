@@ -151,7 +151,7 @@ export class I18nModule implements OnModuleInit {
           provide: 'I18N_SYNC_TRANSLATIONS_LOADER',
           useFactory: async (I18nService: I18nService) => {
             if(options.syncTranslations) {
-              await I18nService.refresh();
+              await I18nService.loadSyncTranslations();
             }
           }
         },
