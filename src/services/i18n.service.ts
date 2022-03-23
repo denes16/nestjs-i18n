@@ -20,6 +20,8 @@ export type translateOptions = {
 
 @Injectable()
 export class I18nService {
+  supportedLanguagesSync?: string[];
+  translationsSync?: I18nTranslation;
   constructor(
     @Inject(I18N_OPTIONS)
     private readonly i18nOptions: I18nOptions,
@@ -34,6 +36,36 @@ export class I18nService {
     @Inject(I18N_TRANSLATIONS_SUBJECT)
     private readonly translationsSubject: BehaviorSubject<I18nTranslation>,
   ) {}
+
+  async loadSyncTranslations() {
+    this.supportedLanguagesSync = await this.getSupportedLanguages();
+    this.translationsSync = await this.translations.pipe(take(1)).toPromise();
+    
+  }
+  
+
+  public translateSync(
+    key: string,
+    options?: translateOptions,
+  ): any {
+    options = {
+      lang: this.i18nOptions.fallbackLanguage,
+      ...options,
+    };
+
+    const { args } = options;
+    let { lang } = options;
+
+    lang =
+      lang === undefined || lang === null
+        ? this.i18nOptions.fallbackLanguage
+        : lang;
+    lang = this.handleFallbacksSync(lang);
+    const translationsByLanguage = (
+      this.translationsSync!
+    )[lang];
+
+  }
 
   public async translate(
     key: string,
@@ -117,7 +149,69 @@ export class I18nService {
       this.languagesSubject.next(languages);
     }
   }
+  private translateObjectSync(
+    key: string,
+    translations: I18nTranslation | string,
+    options?: translateOptions,
+    rootTranslations?: I18nTranslation | string
+  ): I18nTranslation | string {
+    const keys = key.split('.');
+    const [firstKey] = keys;
 
+    const { args } = options;
+
+    if (keys.length > 1 && !translations.hasOwnProperty(key)) {
+      const newKey = keys.slice(1, keys.length).join('.');
+
+      return translations && translations.hasOwnProperty(firstKey)
+        ? this.translateObjectSync(newKey, translations[firstKey], options, rootTranslations)
+        : undefined;
+    }
+
+    let translation = translations[key];
+
+    if (translation && (args || (args instanceof Array && args.length > 0))) {
+      const pluralObject = this.getPluralObject(translation);
+      if(pluralObject && args && args.hasOwnProperty('count')) {
+        const count = Number(args['count']);
+
+        if(count == 0 && !!pluralObject.zero) {
+          translation = pluralObject.zero
+        } else if(count == 1 && !!pluralObject.one) {
+          translation = pluralObject.one
+        } else if(!!pluralObject.other){
+          translation = pluralObject.other
+        }
+      } else if (translation instanceof Object) {
+        return Object.keys(translation).reduce((obj, nestedKey) => {
+          return {
+            ...obj,
+            [nestedKey]: this.translateObjectSync(
+              nestedKey,
+              translation,
+              options,
+              rootTranslations
+            ),
+          };
+        }, {});
+      }
+      translation = this.i18nOptions.formatter(
+        translation,
+        ...(args instanceof Array ? args || [] : [args]),
+      );
+      const nestedTranslations = this.getNestedTranslations(translation);
+      if(nestedTranslations && nestedTranslations.length > 0) {
+        var offset = 0;
+        for (const nestedTranslation of nestedTranslations) {
+          const result = this.translateObjectSync(nestedTranslation.key, rootTranslations, {...options, args: { parent: options.args, ...nestedTranslation.args }}) as string;
+          translation = translation.substring(0, nestedTranslation.index - offset) + result + translation.substring(nestedTranslation.index + nestedTranslation.length - offset)
+          offset = offset + (nestedTranslation.length -result.length);
+        }
+      }
+    }
+
+    return translation;
+  }
   private async translateObject(
     key: string,
     translations: I18nTranslation | string,
@@ -184,6 +278,22 @@ export class I18nService {
 
   private async handleFallbacks(lang: string) {
     const supportedLanguages = await this.getSupportedLanguages();
+    if (this.i18nOptions.fallbacks && !supportedLanguages.includes(lang)) {
+      const sanitizedLang = lang.includes('-')
+        ? lang.substring(0, lang.indexOf('-')).concat('-*')
+        : lang;
+
+      for (const key in this.i18nOptions.fallbacks) {
+        if (key === lang || key === sanitizedLang) {
+          lang = this.i18nOptions.fallbacks[key];
+          break;
+        }
+      }
+    }
+    return lang;
+  }
+  private handleFallbacksSync(lang: string) {
+    const supportedLanguages = this.supportedLanguagesSync!;
     if (this.i18nOptions.fallbacks && !supportedLanguages.includes(lang)) {
       const sanitizedLang = lang.includes('-')
         ? lang.substring(0, lang.indexOf('-')).concat('-*')

@@ -147,6 +147,14 @@ export class I18nModule implements OnModuleInit {
         i18nParserOptionsProvider,
         i18nLanguagesSubjectProvider,
         i18nTranslationSubjectProvider,
+        {
+          provide: 'I18N_SYNC_TRANSLATIONS_LOADER',
+          useFactory: async (I18nService: I18nService) => {
+            if(options.syncTranslations) {
+              await I18nService.refresh();
+            }
+          }
+        },
         ...this.createResolverProviders(options.resolvers),
       ],
       exports: [I18nService, I18nRequestScopeService, languagessProvider],
