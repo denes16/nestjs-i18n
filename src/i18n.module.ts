@@ -148,7 +148,7 @@ export class I18nModule implements OnModuleInit {
         i18nLanguagesSubjectProvider,
         i18nTranslationSubjectProvider,
         {
-          inject: [I18nParser],
+          inject: [I18nService],
           provide: 'I18N_SYNC_TRANSLATIONS_LOADER',
           useFactory: async (I18nService: I18nService) => {
             if(options.syncTranslations) {

@@ -241,6 +241,7 @@ describe('i18n module loads custom files with wrong file pattern', () => {
     const module = await Test.createTestingModule({
       imports: [
         I18nModule.forRoot({
+          syncTranslations: true,
           fallbackLanguage: 'en',
           parser: I18nJsonParser,
           parserOptions: {
