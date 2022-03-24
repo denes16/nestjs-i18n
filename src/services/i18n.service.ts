@@ -40,14 +40,12 @@ export class I18nService {
   async loadSyncTranslations() {
     this.supportedLanguagesSync = await this.getSupportedLanguages();
     this.translationsSync = await this.translations.pipe(take(1)).toPromise();
-    
   }
-  
 
   public translateSync(
     key: string,
     options?: translateOptions,
-  ): any {
+  ): string | I18nTranslation {
     options = {
       lang: this.i18nOptions.fallbackLanguage,
       ...options,
@@ -61,10 +59,32 @@ export class I18nService {
         ? this.i18nOptions.fallbackLanguage
         : lang;
     lang = this.handleFallbacksSync(lang);
-    const translationsByLanguage = (
-      this.translationsSync!
-    )[lang];
+    const translationsByLanguage = this.translationsSync![lang];
+    const translation = this.translateObjectSync(
+      key,
+      translationsByLanguage ? translationsByLanguage : key,
+      options,
+      translationsByLanguage ? translationsByLanguage : undefined,
+    );
 
+    if (
+      translationsByLanguage === undefined ||
+      translationsByLanguage === null ||
+      !translation
+    ) {
+      if (lang !== this.i18nOptions.fallbackLanguage) {
+        if (this.i18nOptions.logging) {
+          const message = `Translation "${key}" in "${lang}" does not exist.`;
+          this.logger.error(message);
+        }
+        return this.translateSync(key, {
+          lang: this.i18nOptions.fallbackLanguage,
+          args,
+        });
+      }
+    }
+
+    return translation || key;
   }
 
   public async translate(
@@ -127,8 +147,9 @@ export class I18nService {
 
   public async refresh(
     translations?: I18nTranslation | Observable<I18nTranslation>,
-    languages?: string[] | Observable<string[]>) {
-    if(!translations){
+    languages?: string[] | Observable<string[]>,
+  ) {
+    if (!translations) {
       translations = await this.parser.parse();
     }
     if (translations instanceof Observable) {
@@ -139,7 +160,7 @@ export class I18nService {
       this.translationsSubject.next(translations);
     }
 
-    if(!languages){
+    if (!languages) {
       languages = await this.parser.languages();
     }
 
@@ -153,7 +174,7 @@ export class I18nService {
     key: string,
     translations: I18nTranslation | string,
     options?: translateOptions,
-    rootTranslations?: I18nTranslation | string
+    rootTranslations?: I18nTranslation | string,
   ): I18nTranslation | string {
     const keys = key.split('.');
     const [firstKey] = keys;
@@ -164,7 +185,12 @@ export class I18nService {
       const newKey = keys.slice(1, keys.length).join('.');
 
       return translations && translations.hasOwnProperty(firstKey)
-        ? this.translateObjectSync(newKey, translations[firstKey], options, rootTranslations)
+        ? this.translateObjectSync(
+            newKey,
+            translations[firstKey],
+            options,
+            rootTranslations,
+          )
         : undefined;
     }
 
@@ -172,15 +198,15 @@ export class I18nService {
 
     if (translation && (args || (args instanceof Array && args.length > 0))) {
       const pluralObject = this.getPluralObject(translation);
-      if(pluralObject && args && args.hasOwnProperty('count')) {
+      if (pluralObject && args && args.hasOwnProperty('count')) {
         const count = Number(args['count']);
 
-        if(count == 0 && !!pluralObject.zero) {
-          translation = pluralObject.zero
-        } else if(count == 1 && !!pluralObject.one) {
-          translation = pluralObject.one
-        } else if(!!pluralObject.other){
-          translation = pluralObject.other
+        if (count == 0 && !!pluralObject.zero) {
+          translation = pluralObject.zero;
+        } else if (count == 1 && !!pluralObject.one) {
+          translation = pluralObject.one;
+        } else if (!!pluralObject.other) {
+          translation = pluralObject.other;
         }
       } else if (translation instanceof Object) {
         return Object.keys(translation).reduce((obj, nestedKey) => {
@@ -190,7 +216,7 @@ export class I18nService {
               nestedKey,
               translation,
               options,
-              rootTranslations
+              rootTranslations,
             ),
           };
         }, {});
@@ -200,12 +226,24 @@ export class I18nService {
         ...(args instanceof Array ? args || [] : [args]),
       );
       const nestedTranslations = this.getNestedTranslations(translation);
-      if(nestedTranslations && nestedTranslations.length > 0) {
+      if (nestedTranslations && nestedTranslations.length > 0) {
         var offset = 0;
         for (const nestedTranslation of nestedTranslations) {
-          const result = this.translateObjectSync(nestedTranslation.key, rootTranslations, {...options, args: { parent: options.args, ...nestedTranslation.args }}) as string;
-          translation = translation.substring(0, nestedTranslation.index - offset) + result + translation.substring(nestedTranslation.index + nestedTranslation.length - offset)
-          offset = offset + (nestedTranslation.length -result.length);
+          const result = this.translateObjectSync(
+            nestedTranslation.key,
+            rootTranslations,
+            {
+              ...options,
+              args: { parent: options.args, ...nestedTranslation.args },
+            },
+          ) as string;
+          translation =
+            translation.substring(0, nestedTranslation.index - offset) +
+            result +
+            translation.substring(
+              nestedTranslation.index + nestedTranslation.length - offset,
+            );
+          offset = offset + (nestedTranslation.length - result.length);
         }
       }
     }
@@ -216,7 +254,7 @@ export class I18nService {
     key: string,
     translations: I18nTranslation | string,
     options?: translateOptions,
-    rootTranslations?: I18nTranslation | string
+    rootTranslations?: I18nTranslation | string,
   ): Promise<I18nTranslation | string> {
     const keys = key.split('.');
     const [firstKey] = keys;
@@ -227,7 +265,12 @@ export class I18nService {
       const newKey = keys.slice(1, keys.length).join('.');
 
       return translations && translations.hasOwnProperty(firstKey)
-        ? await this.translateObject(newKey, translations[firstKey], options, rootTranslations)
+        ? await this.translateObject(
+            newKey,
+            translations[firstKey],
+            options,
+            rootTranslations,
+          )
         : undefined;
     }
 
@@ -235,17 +278,17 @@ export class I18nService {
 
     if (translation && (args || (args instanceof Array && args.length > 0))) {
       const pluralObject = this.getPluralObject(translation);
-      if(pluralObject && args && args.hasOwnProperty('count')) {
+      if (pluralObject && args && args.hasOwnProperty('count')) {
         const count = Number(args['count']);
 
-        if(count == 0 && !!pluralObject.zero) {
-          translation = pluralObject.zero
-        } else if(count == 1 && !!pluralObject.one) {
-          translation = pluralObject.one
-        } else if(!!pluralObject.other){
-          translation = pluralObject.other
+        if (count == 0 && !!pluralObject.zero) {
+          translation = pluralObject.zero;
+        } else if (count == 1 && !!pluralObject.one) {
+          translation = pluralObject.one;
+        } else if (!!pluralObject.other) {
+          translation = pluralObject.other;
         }
-      }else if (translation instanceof Object) {
+      } else if (translation instanceof Object) {
         return Object.keys(translation).reduce(async (obj, nestedKey) => {
           return {
             ...(await obj),
@@ -253,7 +296,7 @@ export class I18nService {
               nestedKey,
               translation,
               options,
-              rootTranslations
+              rootTranslations,
             ),
           };
         }, Promise.resolve({}));
@@ -263,12 +306,24 @@ export class I18nService {
         ...(args instanceof Array ? args || [] : [args]),
       );
       const nestedTranslations = this.getNestedTranslations(translation);
-      if(nestedTranslations && nestedTranslations.length > 0) {
+      if (nestedTranslations && nestedTranslations.length > 0) {
         var offset = 0;
         for (const nestedTranslation of nestedTranslations) {
-          const result = await this.translateObject(nestedTranslation.key, rootTranslations, {...options, args: { parent: options.args, ...nestedTranslation.args }}) as string;
-          translation = translation.substring(0, nestedTranslation.index - offset) + result + translation.substring(nestedTranslation.index + nestedTranslation.length - offset)
-          offset = offset + (nestedTranslation.length -result.length);
+          const result = (await this.translateObject(
+            nestedTranslation.key,
+            rootTranslations,
+            {
+              ...options,
+              args: { parent: options.args, ...nestedTranslation.args },
+            },
+          )) as string;
+          translation =
+            translation.substring(0, nestedTranslation.index - offset) +
+            result +
+            translation.substring(
+              nestedTranslation.index + nestedTranslation.length - offset,
+            );
+          offset = offset + (nestedTranslation.length - result.length);
         }
       }
     }
@@ -310,34 +365,38 @@ export class I18nService {
   }
 
   private getPluralObject(translation: any): I18nPluralObject | undefined {
-    if(translation.hasOwnProperty('one') || translation.hasOwnProperty('zero') || translation.hasOwnProperty('other')) {
+    if (
+      translation.hasOwnProperty('one') ||
+      translation.hasOwnProperty('zero') ||
+      translation.hasOwnProperty('other')
+    ) {
       return translation as I18nPluralObject;
     }
-    return undefined
+    return undefined;
   }
 
-  private getNestedTranslations(translation: string): { index: number, length: number, key: string, args: {} }[] | undefined  {
+  private getNestedTranslations(
+    translation: string,
+  ): { index: number; length: number; key: string; args: {} }[] | undefined {
     var list = [];
     const regex = /\$t\((.*?)(,(.*?))?\)/g;
     var result: RegExpExecArray;
-    while(result =  regex.exec(translation)) {
+    while ((result = regex.exec(translation))) {
       var key = undefined;
       var args = {};
       var index = undefined;
       var length = undefined;
-      if(result && result.length > 0) {
+      if (result && result.length > 0) {
         key = result[1].trim();
-        index = result.index
-        length = result[0].length
-        if(result.length >= 3) {
+        index = result.index;
+        length = result[0].length;
+        if (result.length >= 3) {
           try {
-            args = JSON.parse(result[3])
-          }catch(e) {
-
-          }
+            args = JSON.parse(result[3]);
+          } catch (e) {}
         }
       }
-      if(!!key) {
+      if (!!key) {
         list.push({ index, length, key, args });
       }
       result = undefined;

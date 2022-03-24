@@ -111,7 +111,7 @@ describe('i18n module', () => {
       'nl',
       'pt-BR',
       'zh-CN',
-      'zh-TW'
+      'zh-TW',
     ]);
   });
 
@@ -342,6 +342,7 @@ describe('i18n module with fallbacks', () => {
     const module = await Test.createTestingModule({
       imports: [
         I18nModule.forRoot({
+          syncTranslations: true,
           fallbackLanguage: 'en',
           fallbacks: {
             'en-CA': 'fr',
